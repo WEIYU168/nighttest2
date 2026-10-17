@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>承天寺夜遊 - 解謎遊戲</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Noto Serif TC', serif;
+            background-color: #0f172a; /* Slate 900 */
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            touch-action: none; /* 防止移動端預設滾動，有利於拖曳操作 */
+        }
+
+        /* 遊戲主要畫布，限制比例並居中 */
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            max-width: 800px;
+            max-height: 600px;
+            margin: 0 auto;
+            background-color: #111;
+            background-image: url('承天寺.jpg');
+            background-size: cover;
+            background-position: center;
+            border: 2px solid rgba(251, 191, 36, 0.3);
+            overflow: hidden;
+            box-shadow: 0 0 40px rgba(251, 191, 36, 0.1), 0 0 50px rgba(0,0,0,0.8);
+            transition: border-color 2s ease, box-shadow 2s ease;
+        }
+
+        /* 新增：場景濾鏡/遮罩層，用來控制不同幕的氛圍而不蓋掉背景圖 */
+        #scene-overlay {
+            position: absolute;
+            inset: 0;
+            background-color: rgba(10, 10, 10, 0.6);
+            backdrop-filter: blur(2px);
+            transition: background-color 2s ease, backdrop-filter 2s ease;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* 華麗風按鈕與標題 */
+        .gorgeous-btn {
+            background: linear-gradient(135deg, rgba(30,41,59,0.9), rgba(15,23,42,0.9));
+            border: 1px solid #fbbf24;
+            color: #fef08a;
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.2);
+            text-shadow: 0 0 5px rgba(251, 191, 36, 0.5);
+            transition: all 0.3s ease;
+        }
+        .gorgeous-btn:hover {
+            background: linear-gradient(135deg, rgba(71,85,105,0.9), rgba(30,41,59,0.9));
+            box-shadow: 0 0 25px rgba(251, 191, 36, 0.6);
+            transform: translateY(-2px);
+        }
+        .title-text {
+            background: linear-gradient(to bottom, #fffbeb, #fef08a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
+        }
+
+        /* 螢火蟲/光點特效 */
+        .firefly {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background-color: #fef08a;
+            border-radius: 50%;
+            box-shadow: 0 0 10px 2px #fef08a;
+            opacity: 0;
+            z-index: 2;
+            animation: float-firefly 10s infinite linear, pulse-firefly 3s infinite ease-in-out;
+            pointer-events: none;
+        }
+        @keyframes float-firefly {
+            0% { transform: translateY(0) translateX(0); }
+            50% { transform: translateY(-50px) translateX(20px); }
+            100% { transform: translateY(-100px) translateX(-20px); }
+        }
+        @keyframes pulse-firefly {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 0.8; }
+        }
+
+        @media (min-width: 801px) {
+            body {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+            }
+            #game-container {
+                border-radius: 12px;
+                height: 80vh;
+            }
+        }
+
+        /* 文字物件的基礎樣式 */
+        .word-entity {
+            position: absolute;
+            font-size: 4rem;
+            color: #d1d5db; /* Gray 300 */
+            user-select: none;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 1s ease, color 1s ease, text-shadow 1s ease;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+        }
+
+        .word-entity.draggable {
+            cursor: grab;
+        }
+        .word-entity.draggable:active {
+            cursor: grabbing;
+        }
+
+        /* 光影特效 */
+        .moon-glow {
+            color: #fef08a !important; /* Yellow 200 */
+            text-shadow: 0 0 20px rgba(254, 240, 138, 0.8), 0 0 40px rgba(254, 240, 138, 0.4);
+        }
+
+        .shadow-cast {
+            text-shadow: 20px 40px 10px rgba(0, 0, 0, 0.8);
+        }
+
+        /* 光束效果 */
+        #moonlight-beam {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            width: 300px;
+            height: 600px;
+            background: linear-gradient(180deg, rgba(254, 240, 138, 0.3) 0%, rgba(254, 240, 138, 0) 100%);
+            transform: translateX(-50%) rotate(15deg);
+            transform-origin: top center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 2s ease;
+            clip-path: polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%);
+            z-index: 5;
+        }
+
+        /* 水中植物動畫 */
+        @keyframes float {
+            0% { transform: translate(-50%, -50%) translateY(0px) rotate(0deg); }
+            50% { transform: translate(-50%, -50%) translateY(-10px) rotate(5deg); }
+            100% { transform: translate(-50%, -50%) translateY(0px) rotate(0deg); }
+        }
+
+        .water-plant {
+            color: #6ee7b7 !important; /* Emerald 300 */
+            text-shadow: 0 0 15px rgba(110, 231, 183, 0.5);
+            animation: float 4s ease-in-out infinite;
+        }
+
+        /* 劇情字幕 */
+        #subtitle {
+            position: absolute;
+            bottom: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 1.25rem;
+            text-align: center;
+            width: 90%;
+            opacity: 0;
+            transition: opacity 1s ease;
+            z-index: 20;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            letter-spacing: 0.1em;
+        }
+        
+        /* 隱藏元素工具類 */
+        .hidden-el {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- 新增環境濾鏡層 -->
+        <div id="scene-overlay"></div>
+
+        <!-- 標題畫面 -->
+        <div id="scene-title" class="absolute inset-0 flex flex-col items-center justify-center z-50 transition-opacity duration-1000">
+            <h1 class="text-5xl md:text-6xl mb-8 tracking-widest title-text font-bold">承天寺夜遊</h1>
+            <p class="text-[#d1d5db] text-lg mb-12" style="text-shadow: 0 2px 4px black;">文字與光影解謎體驗</p>
+            <button id="btn-start" class="px-8 py-3 rounded gorgeous-btn tracking-widest text-xl">入夢</button>
+        </div>
+
+        <!-- 遊戲主要渲染層 -->
+        <div id="scene-game" class="absolute inset-0 hidden-el">
+            <!-- 光束 (第一幕使用) -->
+            <div id="moonlight-beam"></div>
+            
+            <!-- 動態生成的文字實體將放在這裡 -->
+            <div id="entities-layer" class="absolute inset-0"></div>
+        </div>
+
+        <!-- 字幕層 -->
+        <div id="subtitle"></div>
+    </div>
+
+    <script>
+        // 遊戲狀態與全域變數
+        const state = {
+            scene: 0,
+            entities: [],
+            draggedEntity: null,
+            offsetX: 0,
+            offsetY: 0,
+            flags: {
+                moonlightRevealed: false,
+                plantsMerged: false
+            }
+        };
+
+        const container = document.getElementById('game-container');
+        const entitiesLayer = document.getElementById('entities-layer');
+        const subtitleEl = document.getElementById('subtitle');
+        const moonlightBeam = document.getElementById('moonlight-beam');
+        const sceneOverlay = document.getElementById('scene-overlay'); // 新增場景濾鏡層
+
+        // 產生環境光點 (螢火蟲)
+        function createFireflies() {
+            for (let i = 0; i < 15; i++) {
+                const fly = document.createElement('div');
+                fly.className = 'firefly';
+                fly.style.left = `${Math.random() * 100}%`;
+                fly.style.top = `${Math.random() * 100}%`;
+                fly.style.animationDelay = `${Math.random() * 5}s, ${Math.random() * 3}s`;
+                fly.style.animationDuration = `${10 + Math.random() * 10}s, ${2 + Math.random() * 2}s`;
+                container.appendChild(fly);
+            }
+        }
+        createFireflies();
+
+        // 顯示字幕的輔助函數
+        function showSubtitle(text, duration = 3000) {
+            subtitleEl.textContent = text;
+            subtitleEl.style.opacity = 1;
+            
+            // 每次顯示新字幕前清除舊的計時器
+            if(window.subtitleTimeout) clearTimeout(window.subtitleTimeout);
+            
+            if (duration > 0) {
+                window.subtitleTimeout = setTimeout(() => {
+                    subtitleEl.style.opacity = 0;
+                }, duration);
+            }
+        }
+
+        // 創建文字實體的輔助函數
+        function createEntity(id, char, x, y, options = {}) {
+            const el = document.createElement('div');
+            el.id = id;
+            el.className = `word-entity ${options.classes || ''}`;
+            el.textContent = char;
+            
+            // 轉換為百分比以適應響應式
+            el.style.left = `${x}%`;
+            el.style.top = `${y}%`;
+
+            if (options.draggable) {
+                el.classList.add('draggable');
+                el.addEventListener('pointerdown', handlePointerDown);
+            }
+
+            if (options.onClick) {
+                el.addEventListener('click', options.onClick);
+            }
+
+            entitiesLayer.appendChild(el);
+            
+            const entity = { id, el, x, y, ...options };
+            state.entities.push(entity);
+            return entity;
+        }
+
+        // 清除所有實體
+        function clearEntities() {
+            entitiesLayer.innerHTML = '';
+            state.entities = [];
+        }
+
+        // 拖曳邏輯處理
+        function handlePointerDown(e) {
+            const el = e.target;
+            // 確保我們點擊的是 draggable 的實體
+            if (!el.classList.contains('draggable')) return;
+
+            state.draggedEntity = state.entities.find(ent => ent.id === el.id);
+            if (!state.draggedEntity) return;
+
+            // 鎖定指標，確保拖曳出元素邊界也能繼續觸發
+            el.setPointerCapture(e.pointerId);
+
+            // 計算滑鼠點擊位置與元素中心的偏移量
+            const rect = el.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            
+            // 將滑鼠座標轉換為相對於 container 的比例
+            state.offsetX = e.clientX - (rect.left + rect.width / 2);
+            state.offsetY = e.clientY - (rect.top + rect.height / 2);
+        }
+
+        function handlePointerMove(e) {
+            if (!state.draggedEntity) return;
+            e.preventDefault();
+
+            const containerRect = container.getBoundingClientRect();
+            
+            // 計算新的 left 和 top (百分比)
+            let newX = ((e.clientX - state.offsetX - containerRect.left) / containerRect.width) * 100;
+            let newY = ((e.clientY - state.offsetY - containerRect.top) / containerRect.height) * 100;
+
+            // 限制在容器內
+            newX = Math.max(5, Math.min(95, newX));
+            newY = Math.max(5, Math.min(95, newY));
+
+            const el = state.draggedEntity.el;
+            el.style.left = `${newX}%`;
+            el.style.top = `${newY}%`;
+            state.draggedEntity.x = newX;
+            state.draggedEntity.y = newY;
+
+            // 觸發特定場景的移動檢查
+            checkSceneInteractions();
+        }
+
+        function handlePointerUp(e) {
+            if (state.draggedEntity) {
+                state.draggedEntity.el.releasePointerCapture(e.pointerId);
+                state.draggedEntity = null;
+            }
+        }
+
+        // 綁定全域拖曳事件
+        document.addEventListener('pointermove', handlePointerMove);
+        document.addEventListener('pointerup', handlePointerUp);
+
+        // 第一幕：解衣欲睡，月色入戶
+        function loadScene1() {
+            clearEntities();
+            state.scene = 1;
+            sceneOverlay.style.backgroundColor = 'rgba(5, 5, 5, 0.85)';
+            sceneOverlay.style.backdropFilter = 'blur(4px)';
+            moonlightBeam.style.opacity = 0;
+            state.flags.moonlightRevealed = false;
+
+            showSubtitle("「解衣欲睡，月色入戶...」\n（移開簾幕，尋找亮光）", 0);
+
+            // 隱藏的「月」
+            const moon = createEntity('moon', '月', 50, 20, { classes: 'moon-glow hidden-el' });
+            
+            // 遮擋的「簾」
+            const curtain = createEntity('curtain', '簾', 50, 20, { draggable: true });
+            curtain.el.style.fontSize = '8rem';
+            curtain.el.style.color = '#333';
+            curtain.el.style.textShadow = '0 0 10px black';
+
+            // 隱藏的出口「行」
+            const door = createEntity('door', '行', 50, 80, { 
+                classes: 'hidden-el',
+                onClick: () => {
+                    if (state.flags.moonlightRevealed) loadScene2();
+                }
+            });
+            door.el.style.fontSize = '3rem';
+        }
+
+        // 第一幕的互動檢查：拉開簾子
+        function checkScene1Interactions() {
+            if (state.scene !== 1 || state.flags.moonlightRevealed) return;
+            
+            const curtain = state.entities.find(e => e.id === 'curtain');
+            
+            // 如果簾子被移開中心點一定距離 (例如 X 偏離 50 超過 20%)
+            if (Math.abs(curtain.x - 50) > 20) {
+                state.flags.moonlightRevealed = true;
+                
+                // 顯示月亮
+                const moon = state.entities.find(e => e.id === 'moon');
+                moon.el.classList.remove('hidden-el');
+                
+                // 開啟月光
+                moonlightBeam.style.opacity = 1;
+                
+                // 顯示「行」並加上光暈
+                const door = state.entities.find(e => e.id === 'door');
+                setTimeout(() => {
+                    door.el.classList.remove('hidden-el');
+                    door.el.classList.add('moon-glow');
+                    showSubtitle("「欣然起行...」（點擊『行』字前往庭院）", 0);
+                }, 1000);
+            }
+        }
+
+        // 第三幕：庭下如積水空明 (省略找尋張懷民，直接進入核心光影解謎)
+        function loadScene2() {
+            clearEntities();
+            state.scene = 2;
+            sceneOverlay.style.backgroundColor = 'rgba(15, 23, 42, 0.75)';
+            sceneOverlay.style.backdropFilter = 'blur(2px)';
+            moonlightBeam.style.opacity = 0.5; // 保留微弱月光
+            state.flags.plantsMerged = false;
+
+            showSubtitle("「庭下如積水空明，水中藻、荇交橫...」\n（將竹與柏的影子交疊於月光下）", 0);
+
+            // 月亮常駐上方
+            createEntity('moon2', '月', 50, 15, { classes: 'moon-glow' });
+
+            // 可拖曳的「竹」與「柏」
+            const bamboo = createEntity('bamboo', '竹', 20, 60, { draggable: true, classes: 'shadow-cast' });
+            const cypress = createEntity('cypress', '柏', 80, 60, { draggable: true, classes: 'shadow-cast' });
+            
+            // 準備隱藏的「藻」與「荇」和最終的「閑」
+            createEntity('algae1', '藻', 45, 60, { classes: 'hidden-el water-plant' });
+            createEntity('algae2', '荇', 55, 65, { classes: 'hidden-el water-plant' });
+            
+            const leisure = createEntity('leisure', '閑', 50, 40, {
+                classes: 'hidden-el moon-glow',
+                onClick: () => loadEndScene()
+            });
+            leisure.el.style.fontSize = '6rem';
+        }
+
+        // 第二幕的互動檢查：影子交疊
+        function checkScene2Interactions() {
+            if (state.scene !== 2 || state.flags.plantsMerged) return;
+
+            const bamboo = state.entities.find(e => e.id === 'bamboo');
+            const cypress = state.entities.find(e => e.id === 'cypress');
+
+            // 計算距離
+            const dx = bamboo.x - cypress.x;
+            const dy = bamboo.y - cypress.y;
+            const distance = Math.sqrt(dx*dx + dy*dy);
+
+            // 如果兩者靠近且在中央區域 (x約 40-60, y約 50-70)
+            const centerX = (bamboo.x + cypress.x) / 2;
+            const centerY = (bamboo.y + cypress.y) / 2;
+
+            if (distance < 15 && centerX > 30 && centerX < 70 && centerY > 40 && centerY < 80) {
+                state.flags.plantsMerged = true;
+                
+                // 移除拖曳能力並淡出竹柏
+                bamboo.el.classList.remove('draggable');
+                cypress.el.classList.remove('draggable');
+                bamboo.el.style.opacity = 0;
+                cypress.el.style.opacity = 0;
+
+                // 改變背景色為空明的水藍色 (修改為調整濾鏡)
+                sceneOverlay.style.backgroundColor = 'rgba(14, 165, 233, 0.2)'; 
+                sceneOverlay.style.backdropFilter = 'blur(0px)';
+                
+                // 顯示藻荇 (浮動動畫)
+                const algae1 = state.entities.find(e => e.id === 'algae1');
+                const algae2 = state.entities.find(e => e.id === 'algae2');
+                algae1.el.classList.remove('hidden-el');
+                algae2.el.classList.remove('hidden-el');
+
+                // 顯示「閑」
+                setTimeout(() => {
+                    showSubtitle("「蓋竹柏影也。」", 2000);
+                    setTimeout(() => {
+                        const leisure = state.entities.find(e => e.id === 'leisure');
+                        leisure.el.classList.remove('hidden-el');
+                        showSubtitle("（點擊『閑』字）", 0);
+                    }, 2000);
+                }, 1000);
+            }
+        }
+
+        function loadEndScene() {
+            clearEntities();
+            state.scene = 3;
+            moonlightBeam.style.opacity = 0;
+            sceneOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
+            sceneOverlay.style.backdropFilter = 'blur(5px)';
+            
+            showSubtitle("", 0); // Clear subtitle
+
+            const endText = document.createElement('div');
+            endText.className = 'absolute inset-0 flex flex-col items-center justify-center text-white';
+            endText.style.opacity = 0;
+            endText.style.transition = 'opacity 2s ease';
+            endText.innerHTML = `
+                <p class="text-2xl md:text-4xl mb-6 tracking-widest leading-loose text-center text-[#fef08a]" style="text-shadow: 0 0 15px rgba(251,191,36,0.5);">
+                    何夜無月？<br>何處無竹柏？<br>但少閑人如吾兩人者耳。
+                </p>
+                <button id="btn-restart" class="mt-12 px-8 py-3 rounded gorgeous-btn tracking-widest text-xl">重新入夢</button>
+            `;
+            entitiesLayer.appendChild(endText);
+            
+            setTimeout(() => {
+                endText.style.opacity = 1;
+                document.getElementById('btn-restart').addEventListener('click', () => {
+                    document.getElementById('scene-title').classList.remove('hidden-el');
+                    document.getElementById('scene-game').classList.add('hidden-el');
+                    sceneOverlay.style.backgroundColor = 'rgba(10, 10, 10, 0.6)';
+                    sceneOverlay.style.backdropFilter = 'blur(2px)';
+                });
+            }, 500);
+        }
+
+        // 統一的互動檢查路由
+        function checkSceneInteractions() {
+            if (state.scene === 1) checkScene1Interactions();
+            else if (state.scene === 2) checkScene2Interactions();
+        }
+
+        // 遊戲初始化綁定
+        document.getElementById('btn-start').addEventListener('click', () => {
+            const titleScene = document.getElementById('scene-title');
+            const gameScene = document.getElementById('scene-game');
+            
+            titleScene.style.opacity = 0;
+            setTimeout(() => {
+                titleScene.classList.add('hidden-el');
+                gameScene.classList.remove('hidden-el');
+                loadScene1();
+            }, 1000);
+        });
+
+    </script>
+</body>
+</html>
